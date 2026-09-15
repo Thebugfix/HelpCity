@@ -2,150 +2,112 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { Loader } from '@googlemaps/js-api-loader'
+import maplibregl from 'maplibre-gl'
 import { createIssue } from '../redux/slices/issuesSlice'
-import { CATEGORIES, getCategoryIcon } from '../utils/helpers'
+import { CATEGORIES, getCategoryIcon } from '../utils/helpers.jsx'
 import { FiUpload, FiMapPin, FiX, FiNavigation, FiCamera } from 'react-icons/fi'
 
 export default function ReportIssuePage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    category: '',
-  })
+  const [form, setForm] = useState({ title: '', description: '', category: '' })
   const [image, setImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [location, setLocation] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [mapLoaded, setMapLoaded] = useState(false)
 
+  const mapContainer = useRef(null)
   const mapRef = useRef(null)
-  const mapInstanceRef = useRef(null)
   const markerRef = useRef(null)
 
-  const initMap = useCallback(async (lat, lng) => {
-    if (!mapRef.current) return
-    const loader = new Loader({
-      apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-      version: 'weekly',
-      libraries: ['places', 'geocoding'],
-    })
-
+  const reverseGeocode = async (lat, lng) => {
     try {
-      const { Map } = await loader.importLibrary('maps')
-      const { AdvancedMarkerElement } = await loader.importLibrary('marker')
-
-      const map = new Map(mapRef.current, {
-        center: { lat, lng },
-        zoom: 15,
-        mapId: 'helpcity-map',
-        disableDefaultUI: false,
-        clickableIcons: false,
-      })
-      mapInstanceRef.current = map
-
-      // Add marker
-      const marker = new AdvancedMarkerElement({
-        map,
-        position: { lat, lng },
-        title: 'Issue Location',
-      })
-      markerRef.current = marker
-
-      // Click to move marker
-      map.addListener('click', async (e) => {
-        const newLat = e.latLng.lat()
-        const newLng = e.latLng.lng()
-        marker.position = { lat: newLat, lng: newLng }
-        const address = await reverseGeocode(newLat, newLng, loader)
-        setLocation({ lat: newLat, lng: newLng, address })
-      })
-
-      setMapLoaded(true)
-    } catch (err) {
-      console.error('Map init error:', err)
-      // Map is optional - allow form submission without it
-      setMapLoaded(true)
-    }
-  }, [])
-
-  const reverseGeocode = async (lat, lng, loader) => {
-    try {
-      const { Geocoder } = await loader.importLibrary('geocoding')
-      const geocoder = new Geocoder()
-      const result = await geocoder.geocode({ location: { lat, lng } })
-      return result.results[0]?.formatted_address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`
+      )
+      const data = await res.json()
+      return data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
     } catch {
       return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
     }
   }
 
+  const initMap = useCallback((lat = 18.5204, lng = 73.8567) => {
+    if (mapRef.current || !mapContainer.current) return
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      center: [lng, lat],
+      zoom: 13,
+    })
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+    const marker = new maplibregl.Marker({ color: '#4f46e5', draggable: true })
+      .setLngLat([lng, lat])
+      .addTo(map)
+
+    markerRef.current = marker
+
+    // Drag marker to set location
+    marker.on('dragend', async () => {
+      const { lng: newLng, lat: newLat } = marker.getLngLat()
+      const address = await reverseGeocode(newLat, newLng)
+      setLocation({ lat: newLat, lng: newLng, address })
+    })
+
+    // Click map to move marker
+    map.on('click', async (e) => {
+      const { lng: newLng, lat: newLat } = e.lngLat
+      marker.setLngLat([newLng, newLat])
+      const address = await reverseGeocode(newLat, newLng)
+      setLocation({ lat: newLat, lng: newLng, address })
+    })
+
+    mapRef.current = map
+  }, [])
+
+  useEffect(() => {
+    initMap()
+    return () => {
+      mapRef.current?.remove()
+      mapRef.current = null
+    }
+  }, [initMap])
+
   const detectLocation = () => {
-    setLocationLoading(true)
     if (!navigator.geolocation) {
-      toast.error('Geolocation not supported by your browser')
-      setLocationLoading(false)
+      toast.error('Geolocation not supported')
       return
     }
-
+    setLocationLoading(true)
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
-        const fallbackAddress = `${lat.toFixed(4)}, ${lng.toFixed(4)}`
-
-        // Commit the detected coordinates right away so a slow reverse-geocode
-        // or map API hiccup doesn't leave the UI stuck in a loading state.
-        setLocation({ lat, lng, address: fallbackAddress })
-
-        try {
-          const loader = new Loader({
-            apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-            version: 'weekly',
-          })
-
-          const address = await reverseGeocode(lat, lng, loader)
-          setLocation({ lat, lng, address })
-
-          if (!mapInstanceRef.current) {
-            await initMap(lat, lng)
-          } else {
-            mapInstanceRef.current.panTo({ lat, lng })
-            if (markerRef.current) markerRef.current.position = { lat, lng }
-          }
-        } catch (err) {
-          console.error('Location enrichment error:', err)
-        } finally {
-          setLocationLoading(false)
+        const address = await reverseGeocode(lat, lng)
+        setLocation({ lat, lng, address })
+        if (mapRef.current) {
+          mapRef.current.flyTo({ center: [lng, lat], zoom: 15 })
+          markerRef.current?.setLngLat([lng, lat])
         }
-
+        setLocationLoading(false)
         toast.success('Location detected!')
       },
       () => {
-        toast.error('Could not detect location. Please click on the map.')
+        toast.error('Could not detect location')
         setLocationLoading(false)
-        // Load map with default location (India)
-        initMap(19.0760, 72.8777)
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000 }
     )
   }
-
-  useEffect(() => {
-    // Load map on mount with default location
-    initMap(19.0760, 72.8777)
-  }, [initMap])
 
   const handleImageChange = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image must be under 5MB')
-      return
-    }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return }
     setImage(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -161,15 +123,8 @@ export default function ReportIssuePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
-    if (!form.category) {
-      toast.error('Please select a category')
-      return
-    }
-    if (!location) {
-      toast.error('Please detect or select your location on the map')
-      return
-    }
+    if (!form.category) { toast.error('Please select a category'); return }
+    if (!location) { toast.error('Please click the map or detect your location'); return }
 
     setSubmitting(true)
     try {
@@ -208,9 +163,11 @@ export default function ReportIssuePage() {
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
           {/* Left column */}
           <div className="space-y-5">
-           {/* Category */}
+
+            {/* Category */}
             <div className="card p-5">
               <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Category <span className="text-red-500">*</span>
@@ -286,7 +243,7 @@ export default function ReportIssuePage() {
                   <button
                     type="button"
                     onClick={() => { setImage(null); setImagePreview(null) }}
-                    className="absolute top-2 right-2 w-8 h-8 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition-colors"
+                    className="absolute top-2 right-2 w-8 h-8 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white"
                   >
                     <FiX size={14} />
                   </button>
@@ -295,8 +252,8 @@ export default function ReportIssuePage() {
                 <div
                   onDrop={handleDrop}
                   onDragOver={e => e.preventDefault()}
-                  className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-brand-300 transition-colors cursor-pointer"
                   onClick={() => document.getElementById('image-input').click()}
+                  className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-brand-300 transition-colors cursor-pointer"
                 >
                   <FiCamera className="mx-auto text-3xl text-gray-300 mb-2" />
                   <p className="text-sm text-gray-500 font-medium">Click or drag photo here</p>
@@ -335,21 +292,17 @@ export default function ReportIssuePage() {
                 </button>
               </div>
 
-              {/* Map */}
-              <div ref={mapRef} className="map-container bg-gray-100 flex items-center justify-center">
-                {!mapLoaded && (
-                  <div className="text-center text-gray-400">
-                    <FiMapPin className="mx-auto text-2xl mb-2" />
-                    <p className="text-xs">Loading map...</p>
-                  </div>
-                )}
-              </div>
+              {/* MapLibre map */}
+              <div
+                ref={mapContainer}
+                className="w-full h-64 rounded-xl overflow-hidden"
+              />
 
               {location ? (
                 <div className="mt-3 flex items-start gap-2 p-3 bg-brand-50 rounded-xl">
                   <FiMapPin className="text-brand-600 mt-0.5 flex-shrink-0" size={14} />
                   <div>
-                    <p className="text-xs font-medium text-brand-700">{location.address}</p>
+                    <p className="text-xs font-medium text-brand-700 line-clamp-2">{location.address}</p>
                     <p className="text-xs text-brand-500 mt-0.5 font-mono">
                       {location.lat?.toFixed(4)}, {location.lng?.toFixed(4)}
                     </p>
@@ -357,7 +310,7 @@ export default function ReportIssuePage() {
                 </div>
               ) : (
                 <p className="mt-2 text-xs text-gray-400 text-center">
-                  Click "Detect Location" or click on the map to set location
+                  Click on the map or drag the marker to set location
                 </p>
               )}
             </div>
@@ -370,8 +323,7 @@ export default function ReportIssuePage() {
             >
               {submitting ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="spinner" />
-                  Submitting Report...
+                  <div className="spinner" /> Submitting Report...
                 </div>
               ) : (
                 <><FiUpload size={16} /> Submit Report</>

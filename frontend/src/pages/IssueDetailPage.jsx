@@ -122,14 +122,25 @@ export default function IssueDetailPage() {
               {issue.location.address && (
                 <p className="text-sm text-gray-600 mb-3">{issue.location.address}</p>
               )}
-              <div className="w-full h-48 rounded-xl overflow-hidden bg-gray-100">
-                <iframe
-                  title="Issue location"
-                  src={`https://maps.google.com/maps?q=${issue.location.lat},${issue.location.lng}&z=15&output=embed`}
-                  className="w-full h-full border-0"
-                  loading="lazy"
+              <div
+                  ref={(el) => {
+                    if (!el || el._mapInit) return
+                    el._mapInit = true
+                    import('maplibre-gl').then(({ default: maplibregl }) => {
+                      const map = new maplibregl.Map({
+                        container: el,
+                        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                        center: [issue.location.lng, issue.location.lat],
+                        zoom: 15,
+                        interactive: false,
+                      })
+                      new maplibregl.Marker({ color: '#4f46e5' })
+                        .setLngLat([issue.location.lng, issue.location.lat])
+                        .addTo(map)
+                    })
+                  }}
+                  className="w-full h-48 rounded-xl overflow-hidden"
                 />
-              </div>
               <p className="text-xs text-gray-400 mt-2 font-mono">
                 {issue.location.lat?.toFixed(6)}, {issue.location.lng?.toFixed(6)}
               </p>
