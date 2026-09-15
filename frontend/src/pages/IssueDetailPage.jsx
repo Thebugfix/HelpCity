@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { fetchIssue } from '../redux/slices/issuesSlice'
 import { toggleUpvote, deleteIssue } from '../redux/slices/issuesSlice'
 import { toast } from 'react-hot-toast'
-import { FiMapPin, FiThumbsUp, FiClock, FiUser, FiArrowLeft, FiTrash2, FiTag } from 'react-icons/fi'
+import { FiMapPin, FiThumbsUp, FiClock, FiUser, FiArrowLeft, FiTrash2, FiTag, FiExternalLink } from 'react-icons/fi'
 import { getCategoryStyle, getStatusStyle, getCategoryIcon, getStatusIcon, formatDateTime } from '../utils/helpers'
 
 export default function IssueDetailPage() {
@@ -114,52 +114,52 @@ export default function IssueDetailPage() {
           </div>
 
           {/* Location */}
-           {issue.location && (
-             <div className="card p-5">
-               <div className="flex items-center justify-between mb-3">
-                 <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                   <FiMapPin size={14} /> Location
-                 </h3>
-                 
-                   href={`https://www.google.com/maps?q=${issue.location.lat},${issue.location.lng}`}
-                   target="_blank"
-                   rel="noopener noreferrer"
-                   className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors"
-                 >
-                   <FiExternalLink size={12} /> Open in Maps
-                 </a>
-               </div>
-           
-               {issue.location.address && (
-                 <p className="text-sm text-gray-600 mb-3">{issue.location.address}</p>
-               )}
-           
-               <div
-                 ref={(el) => {
-                   if (!el || el._mapInit) return
-                   el._mapInit = true
-                   import('maplibre-gl').then(({ default: maplibregl }) => {
-                     const map = new maplibregl.Map({
-                       container: el,
-                       style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-                       center: [issue.location.lng, issue.location.lat],
-                       zoom: 15,
-                       interactive: false,
-                     })
-                     new maplibregl.Marker({ color: '#4f46e5' })
-                       .setLngLat([issue.location.lng, issue.location.lat])
-                       .addTo(map)
-                   })
-                 }}
-                 className="w-full h-48 rounded-xl overflow-hidden cursor-pointer"
-                 onClick={() => window.open(`https://www.google.com/maps?q=${issue.location.lat},${issue.location.lng}`, '_blank')}
-               />
-           
-               <p className="text-xs text-gray-400 mt-2 font-mono">
-                 {issue.location.lat?.toFixed(6)}, {issue.location.lng?.toFixed(6)}
-               </p>
-             </div>
-           )}
+          {issue.location && (
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <FiMapPin size={14} /> Location
+                </h3>
+                <a
+                  href={`https://www.google.com/maps?q=${issue.location.lat},${issue.location.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <FiExternalLink size={12} /> Open in Maps
+                </a>
+              </div>
+
+              {issue.location.address && (
+                <p className="text-sm text-gray-600 mb-3">{issue.location.address}</p>
+              )}
+
+              <div
+                ref={(el) => {
+                  if (!el || el._mapInit) return
+                  el._mapInit = true
+                  import('maplibre-gl').then(({ default: maplibregl }) => {
+                    const map = new maplibregl.Map({
+                      container: el,
+                      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                      center: [issue.location.lng, issue.location.lat],
+                      zoom: 15,
+                      interactive: false,
+                    })
+                    new maplibregl.Marker({ color: '#4f46e5' })
+                      .setLngLat([issue.location.lng, issue.location.lat])
+                      .addTo(map)
+                  })
+                }}
+                className="w-full h-48 rounded-xl overflow-hidden cursor-pointer"
+                onClick={() => window.open(`https://www.google.com/maps?q=${issue.location.lat},${issue.location.lng}`, '_blank')}
+              />
+
+              <p className="text-xs text-gray-400 mt-2 font-mono">
+                {issue.location.lat?.toFixed(6)}, {issue.location.lng?.toFixed(6)}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}
